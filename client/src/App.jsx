@@ -17,18 +17,19 @@ function App() {
                             style: {
                                 background: '#1a1a1a',
                                 color: '#fff',
-                            },
-                            success: {
-                                iconTheme: {
-                                    primary: '#D4F23F',
-                                    secondary: '#0B0B0B',
-                                },
-                            },
+                                border: '1px solid #333'
+                            }
                         }}
                     />
+
+                    <Routes>
+                        <Route path="/" element={<MobileWebEnhanced />} />
+                        <Route path="/screen" element={<PublicScreen />} />
+                        <Route path="/dj" element={<DJDashboardEnhanced />} />
+                    </Routes>
                 </div>
+            </BrowserRouter>
         </SocketProvider>
-        </BrowserRouter >
     );
 }
 

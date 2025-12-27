@@ -94,7 +94,7 @@ export default function MobileWebEnhanced() {
             setBidAmount('');
 
             // Refresh recent bids
-            fetch RecentBids();
+            fetchRecentBids();
         } catch (error) {
             toast.error(error.response?.data?.error || 'Failed to submit bid');
         } finally {
