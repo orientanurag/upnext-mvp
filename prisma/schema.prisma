@@ -1,0 +1,85 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                 String
+  durationHours        Int      @map("duration_hours")
+  vibesPerHour         Int      @map("vibes_per_hour")
+  vibeDurationMinutes  Int      @default(2) @map("vibe_duration_minutes")
+  startTime            DateTime? @map("start_time")
+  endTime              DateTime? @map("end_time")
+  isActive             Boolean  @default(false) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  
+  vibeSlots            VibeSlot[]
+  bids                 Bid[]
+  
+  @@map("events")
+}
+
+model VibeSlot {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId              String   @map("event_id") @db.ObjectId
+  slotNumber           Int      @map("slot_number")
+  scheduledTime        DateTime @map("scheduled_time")
+  status               String   @default("available") // available, bidding, locked, completed
+  currentWinnerBidId   String?  @map("current_winner_bid_id") @db.ObjectId
+  createdAt            DateTime @default(now()) @map("created_at")
+  
+  event                Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  bids                 Bid[]
+  
+  @@map("vibe_slots")
+}
+
+model Bid {
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  vibeSlotId           String?  @map("vibe_slot_id") @db.ObjectId
+  eventId              String   @map("event_id") @db.ObjectId
+  userName             String?  @map("user_name")
+  userEmail            String?  @map("user_email")
+  songTitle            String   @map("song_title")
+  songArtist           String?  @map("song_artist")
+  songAlbum            String?  @map("song_album")
+  deezerTrackId        String?  @map("deezer_track_id")
+  message              String?
+  bidAmount            Float    @map("bid_amount")
+  status               String   @default("pending") // pending, approved, rejected, played
+  submittedAt          DateTime @default(now()) @map("submitted_at")
+  approvedAt           DateTime? @map("approved_at")
+  playedAt             DateTime? @map("played_at")
+  
+  vibeSlot             VibeSlot? @relation(fields: [vibeSlotId], references: [id], onDelete: SetNull)
+  event                Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  @@map("bids")
+}
+
+model AdminUser {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  role         String   @default("dj") // dj, admin
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@map("admin_users")
+}
+
+model Setting {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  key        String   @unique
+  value      String
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+  
+  @@map("settings")
+}
