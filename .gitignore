@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .DS_Store
-logs
 *.log
-coverage
+npm-debug.log*
+.vscode
+.idea

@@ -7,49 +7,89 @@ export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider = ({ children }) => {
     const [socket, setSocket] = useState(null);
+    const [isConnected, setIsConnected] = useState(false);
     const [gameState, setGameState] = useState({
         bids: [],
         leaderboard: [],
-        currentSlot: {},
+        currentSlot: {
+            id: Date.now(),
+            endTime: Date.now() + 5 * 60 * 1000,
+            status: 'ACTIVE'
+        },
         currentWinner: null
     });
 
     useEffect(() => {
-        // Determine URL based on environment
-        // In dev (without proxy issues) or prod
-        const socketUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000' : window.location.origin;
+        // Determine socket URL based on environment
+        const isDevelopment = import.meta.env.DEV;
+        const socketUrl = isDevelopment
+            ? 'http://localhost:3000'
+            : window.location.origin;
 
-        // For now, let's try to assume relative path if proxy is set up or same origin
-        const newSocket = io('/', { path: '/socket.io' });
+        console.log('Connecting to socket server:', socketUrl);
+
+        const newSocket = io(socketUrl, {
+            path: '/socket.io',
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: 5
+        });
 
         newSocket.on('connect', () => {
-            console.log('Connected to socket server');
+            console.log('✅ Connected to socket server');
+            setIsConnected(true);
+        });
+
+        newSocket.on('disconnect', () => {
+            console.log('❌ Disconnected from socket server');
+            setIsConnected(false);
+        });
+
+        newSocket.on('connect_error', (error) => {
+            console.error('Socket connection error:', error);
+            setIsConnected(false);
         });
 
         newSocket.on('stateUpdate', (newState) => {
-            console.log('State received:', newState);
+            console.log('📊 State update received:', newState);
             setGameState(newState);
         });
 
         setSocket(newSocket);
 
-        return () => newSocket.close();
+        return () => {
+            console.log('Closing socket connection');
+            newSocket.close();
+        };
     }, []);
 
     const submitBid = (bidData) => {
-        if (socket) socket.emit('submitBid', bidData);
+        if (socket && isConnected) {
+            socket.emit('submitBid', bidData);
+        } else {
+            console.error('Cannot submit bid: Socket not connected');
+        }
     };
 
     const adminAction = (actionData) => {
-        if (socket) socket.emit('adminAction', actionData);
+        if (socket && isConnected) {
+            socket.emit('adminAction', actionData);
+        } else {
+            console.error('Cannot perform admin action: Socket not connected');
+        }
     };
 
     const nextSlot = () => {
-        if (socket) socket.emit('adminNextSlot');
-    }
+        if (socket && isConnected) {
+            socket.emit('adminNextSlot');
+        } else {
+            console.error('Cannot trigger next slot: Socket not connected');
+        }
+    };
 
     return (
-        <SocketContext.Provider value={{ socket, gameState, submitBid, adminAction, nextSlot }}>
+        <SocketContext.Provider value={{ socket, gameState, isConnected, submitBid, adminAction, nextSlot }}>
             {children}
         </SocketContext.Provider>
     );
