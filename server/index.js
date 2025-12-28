@@ -1,4 +1,5 @@
 require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -7,39 +8,31 @@ const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const { generateToken, authenticateToken } = require('./utils/auth');
-const musicService = require('./services/musicService');
-
-// Initialize Prisma with error handling
-let prisma;
+const musicService = require('./services/musicService');// Initialize Prisma client with connection handling
+const prisma = new PrismaClient({ log: ['error', 'warn'] });
 let dbConnected = false;
-
-try {
-    prisma = new PrismaClient({
-        log: ['error', 'warn'],
+prisma.$connect()
+    .then(() => {
+        console.log('💾 Database connected successfully');
+        dbConnected = true;
+    })
+    .catch((error) => {
+        console.error('❌ Database connection failed:', error.message);
+        console.error('Server will start but database features will be unavailable');
+        dbConnected = false;
     });
 
-    // Test database connection
-    prisma.$connect()
-        .then(() => {
-            console.log('💾 Database connected successfully');
-            dbConnected = true;
-        })
-        .catch((error) => {
-            console.error('❌ Database connection failed:', error.message);
-            console.error('Server will start but database features will be unavailable');
-            dbConnected = false;
-        });
-} catch (error) {
-    console.error('❌ Failed to initialize Prisma:', error.message);
-    console.error('Server will start in limited mode');
-}
+// Global handler for unhandled promise rejections to prevent server crash
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the React app in production
 const clientDistPath = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDistPath));
 
@@ -73,12 +66,12 @@ app.get('/api/music/search', async (req, res) => {
         if (!q) {
             return res.status(400).json({ error: 'Query parameter required' });
         }
-
         const results = await musicService.searchSongs(q, parseInt(limit));
         res.json(results);
     } catch (error) {
-        console.error('Music search error:', error);
-        res.status(500).json({ error: 'Failed to search music' });
+        console.error('Music search error (handled):', error.message);
+        // Return empty result set to keep UI functional
+        res.status(200).json({ data: [], total: 0, message: 'Music service unavailable' });
     }
 });
 
