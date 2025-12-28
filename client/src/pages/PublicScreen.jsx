@@ -108,8 +108,26 @@ export default function PublicScreen() {
                                 </div>
                             </>
                         ) : (
-                            <div className="text-4xl font-bold opacity-50">
-                                NOTHING PLAYING
+                            <div className="flex flex-col items-center justify-center h-full opacity-80">
+                                <div className="text-6xl mb-4 animate-pulse">🎹</div>
+                                <div className="text-3xl font-bold tracking-widest text-brand-lime uppercase mb-2">
+                                    Vibe In Progress
+                                </div>
+                                <div className="text-sm font-mono text-gray-400">
+                                    WAITING FOR DJ...
+                                </div>
+                                <div className="flex gap-1 mt-6 h-8 items-end">
+                                    {[...Array(8)].map((_, i) => (
+                                        <div
+                                            key={i}
+                                            className="w-2 bg-brand-lime animate-bounce"
+                                            style={{
+                                                height: `${Math.random() * 100}%`,
+                                                animationDuration: `${0.6 + Math.random() * 0.4}s`
+                                            }}
+                                        />
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>

@@ -169,7 +169,49 @@ app.get('/api/slots/current', async (req, res) => {
 
         if (!event) return res.json(null);
 
+        // Logic to detect if we moved to a new slot?
+        // We can just get the *calculated* current slot.
+        // If the *stored* state implies a transition, trigger cleanup?
+        // Simpler: Just rely on getCurrentSlot to clean up invalid slots if we added that?
+        // No, let's do it explicitly if needed.
+        // For this MVP, we will rely on a "check" mechanism.
+
         const slot = await slotService.getCurrentSlot(prisma, event.id);
+
+        // Basic Auto-Refund Check (Optimistic)
+        // Check if there are ANY 'paid' bids in previous slots (slots with number < current)
+        // This effectively cleans up "old" windows.
+        if (slot) {
+            const oldSlots = await prisma.vibeSlot.findMany({
+                where: {
+                    eventId: event.id,
+                    slotNumber: { lt: slot.slotNumber },
+                    status: { not: 'processed' } // Add a processed marker? Or just query bids directly
+                }
+            });
+
+            // To avoid schema changes for 'status', we query bids directly where slotNumber < current
+            // Actually, we can just look for bids where vibeSlot.slotNumber < currentSlot.slotNumber
+            const expiredBids = await prisma.bid.findMany({
+                where: {
+                    event: { id: event.id },
+                    vibeSlot: { slotNumber: { lt: slot.slotNumber } },
+                    status: { in: ['pending', 'approved'] }
+                }
+            });
+
+            if (expiredBids.length > 0) {
+                // Group by slot to process? or just bulk process?
+                // slotService.processSlotExpiry handles by slotId, let's loop uniquely
+                const slotIds = [...new Set(expiredBids.map(b => b.vibeSlotId))];
+                for (const sid of slotIds) {
+                    if (sid) await slotService.processSlotExpiry(prisma, sid);
+                }
+                // Notify Clients
+                if (slotIds.length > 0) io.emit('gameStateChanged', { type: 'refund_processed' });
+            }
+        }
+
         res.json(slot);
     } catch (error) {
         console.error('Get current slot error:', error);
@@ -177,10 +219,11 @@ app.get('/api/slots/current', async (req, res) => {
     }
 });
 
-// Get top bids for a slot
+// Get top bids for a slot (supports limit query param)
 app.get('/api/slots/:id/top-bids', async (req, res) => {
     try {
-        const bids = await slotService.getTopBids(prisma, req.params.id);
+        const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+        const bids = await slotService.getTopBids(prisma, req.params.id, limit);
         res.json(bids);
     } catch (error) {
         console.error('Get top bids error:', error);

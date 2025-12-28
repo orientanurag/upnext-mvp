@@ -84,11 +84,14 @@ const slotService = {
     },
 
     /**
-     * Get top 3 bids for a specific slot
+     * Get bids for a specific slot
      * @param {Object} prisma - Prisma Client instance
      * @param {String} slotId - VibeSlot ID
+     * @param {Number} limit - Optional limit
      */
-    async getTopBids(prisma, slotId) {
+    async getTopBids(prisma, slotId, limit = 50) {
+        // User asked for "Top 3" for specific views, but DJ needs all.
+        // We defaults to 50 (effectively all) unless specified.
         return await prisma.bid.findMany({
             where: {
                 vibeSlotId: slotId,
@@ -98,11 +101,58 @@ const slotService = {
                 { bidAmount: 'desc' },
                 { submittedAt: 'asc' } // First bidder wins tie
             ],
-            take: 3,
+            take: limit,
             include: {
-                wallet: true // Include wallet info if needed
+                wallet: true
             }
         });
+    },
+
+    /**
+     * Process refunds for a finished slot
+     * @param {Object} prisma - Prisma Client instance
+     * @param {String} slotId - The ID of the slot that just ended
+     */
+    async processSlotExpiry(prisma, slotId) {
+        console.log(`Processing expiry for slot ${slotId}`);
+        const expiredBids = await prisma.bid.findMany({
+            where: {
+                vibeSlotId: slotId,
+                status: { in: ['pending', 'approved'] }, // Not played
+                paymentStatus: 'paid'
+            }
+        });
+
+        for (const bid of expiredBids) {
+            console.log(`Refund request for expired bid ${bid.id}`);
+            if (bid.walletId) {
+                await prisma.$transaction([
+                    prisma.userWallet.update({
+                        where: { id: bid.walletId },
+                        data: { balance: { increment: bid.bidAmount } }
+                    }),
+                    prisma.walletTransaction.create({
+                        data: {
+                            walletId: bid.walletId,
+                            amount: bid.bidAmount,
+                            type: 'REFUND',
+                            description: `Refund: Slot ended without play for "${bid.songTitle}"`,
+                            referenceId: bid.id
+                        }
+                    }),
+                    prisma.bid.update({
+                        where: { id: bid.id },
+                        data: { status: 'rejected', paymentStatus: 'refunded' }
+                    })
+                ]);
+            } else {
+                // Just mark rejected if no wallet (shouldn't happen with current logic)
+                await prisma.bid.update({
+                    where: { id: bid.id },
+                    data: { status: 'rejected' }
+                });
+            }
+        }
     }
 };
 

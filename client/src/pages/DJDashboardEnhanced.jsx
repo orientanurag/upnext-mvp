@@ -44,7 +44,8 @@ export default function DJDashboardEnhanced() {
 
     const fetchTopBids = async (slotId) => {
         try {
-            const response = await axios.get(`${API_BASE}/api/slots/${slotId}/top-bids`);
+            // Fetch more bids for DJ view (up to 50)
+            const response = await axios.get(`${API_BASE}/api/slots/${slotId}/top-bids?limit=50`);
             setTopBids(response.data);
         } catch (error) {
             console.error('Failed to fetch top bids:', error);
@@ -155,7 +156,7 @@ export default function DJDashboardEnhanced() {
                 <div className="bg-black p-6 rounded-xl border border-gray-800">
                     <h2 className="text-xl font-bold text-gray-400 mb-4 flex items-center justify-between">
                         <span>TOP BIDS (Current Slot)</span>
-                        <div className="text-xs bg-gray-800 px-2 py-1 rounded">Displaying Top 3</div>
+                        <div className="text-xs bg-gray-800 px-2 py-1 rounded">Queue View</div>
                     </h2>
                     <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                         {topBids.map((bid, index) => (
