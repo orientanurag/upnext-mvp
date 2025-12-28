@@ -95,7 +95,9 @@ export const SocketProvider = ({ children }) => {
                 return {
                     ...prevState,
                     bids: updatedBids,
-                    leaderboard: updatedBids.filter(b => b.status === 'approved')
+                    leaderboard: updatedBids.filter(b => b.status === 'approved'),
+                    // If this bid is now playing, set it as winner
+                    currentWinner: updatedBid.status === 'played' ? updatedBid : prevState.currentWinner
                 };
             });
         });
