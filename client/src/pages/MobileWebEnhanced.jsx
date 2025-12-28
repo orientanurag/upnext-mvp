@@ -15,6 +15,7 @@ export default function MobileWebEnhanced() {
     const [userName, setUserName] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [recentBids, setRecentBids] = useState([]);
+    const [loading, setLoading] = useState(false);
 
     // Fetch recent bids on load
     useEffect(() => {
@@ -23,10 +24,15 @@ export default function MobileWebEnhanced() {
 
     const fetchRecentBids = async () => {
         try {
+            setLoading(true);
             const response = await axios.get(`${API_BASE}/api/bids?limit=5`);
-            setRecentBids(response.data);
+            setRecentBids(response.data || []);
         } catch (error) {
             console.error('Failed to fetch bids:', error);
+            // Don't crash the app if bids can't be fetched
+            setRecentBids([]);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -40,8 +46,9 @@ export default function MobileWebEnhanced() {
             });
             setSearchResults(response.data.data || []);
         } catch (error) {
-            toast.error('Failed to search music');
-            console.error(error);
+            console.error('Music search error:', error);
+            toast.error('Failed to search music. Please try again.');
+            setSearchResults([]);
         } finally {
             setSearching(false);
         }
