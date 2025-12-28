@@ -110,6 +110,7 @@ app.get('/api/music/album/:id/tracks', async (req, res) => {
 
 // Submit a bid
 app.post('/api/bids', async (req, res) => {
+    console.log('🔔 Received bid request body:', req.body);
     try {
         // Check if database is available
         if (!prisma || !dbConnected) {
@@ -176,6 +177,7 @@ app.post('/api/bids', async (req, res) => {
         res.status(201).json(bid);
     } catch (error) {
         console.error('Bid submission error:', error);
+        console.error(error.stack);
         res.status(500).json({
             error: 'Failed to submit bid',
             details: error.message
