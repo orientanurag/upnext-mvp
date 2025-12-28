@@ -1,15 +1,13 @@
 const axios = require('axios');
 
-const DEEZER_API_BASE = 'https://api.deezer.com';
+const ITUNES_API_BASE = 'https://itunes.apple.com';
 
 // In-memory cache to reduce API calls
 const cache = {
-    genres: null,
     searches: new Map(),
-    albums: new Map(),
 };
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes cache for iTunes
 
 class MusicService {
     /**
@@ -26,21 +24,26 @@ class MusicService {
         }
 
         try {
-            const response = await axios.get(`${DEEZER_API_BASE}/search`, {
-                params: { q: query, limit }
+            const response = await axios.get(`${ITUNES_API_BASE}/search`, {
+                params: {
+                    term: query,
+                    media: 'music',
+                    entity: 'song',
+                    limit
+                }
             });
 
             const results = {
-                data: response.data.data.map(track => ({
-                    id: track.id.toString(),
-                    title: track.title,
-                    artist: track.artist.name,
-                    album: track.album.title,
-                    duration: track.duration,
-                    preview: track.preview,
-                    cover: track.album.cover_medium
+                data: response.data.results.map(track => ({
+                    id: track.trackId.toString(),
+                    title: track.trackName,
+                    artist: track.artistName,
+                    album: track.collectionName,
+                    duration: Math.round(track.trackTimeMillis / 1000), // Convert ms to seconds
+                    preview: track.previewUrl,
+                    cover: track.artworkUrl100?.replace('100x100', '600x600') // Get higher res image
                 })),
-                total: response.data.total
+                total: response.data.resultCount
             };
 
             cache.searches.set(cacheKey, {
@@ -50,155 +53,70 @@ class MusicService {
 
             return results;
         } catch (error) {
-            console.error('Deezer search error:', error.message);
-            throw new Error('Failed to search songs');
+            console.error('iTunes search error:', error.message);
+            // Fallback to empty results instead of crashing
+            return { data: [], total: 0 };
         }
     }
 
     /**
-     * Search for artists
-     */
-    async searchArtists(query, limit = 10) {
-        try {
-            const response = await axios.get(`${DEEZER_API_BASE}/search/artist`, {
-                params: { q: query, limit }
-            });
-
-            return response.data.data.map(artist => ({
-                id: artist.id.toString(),
-                name: artist.name,
-                picture: artist.picture_medium,
-                nbAlbum: artist.nb_album,
-                nbFan: artist.nb_fan
-            }));
-        } catch (error) {
-            console.error('Deezer artist search error:', error.message);
-            throw new Error('Failed to search artists');
-        }
-    }
-
-    /**
-     * Get available genres
+     * Get available genres - iTunes doesn't have a simple genre list endpoint
+     * returning static popular genres
      */
     async getGenres() {
-        if (cache.genres) {
-            return cache.genres;
-        }
-
-        try {
-            const response = await axios.get(`${DEEZER_API_BASE}/genre`);
-
-            const genres = response.data.data
-                .filter(g => g.id !== 0) // Remove "All" genre
-                .map(genre => ({
-                    id: genre.id.toString(),
-                    name: genre.name,
-                    picture: genre.picture_medium
-                }));
-
-            cache.genres = genres;
-            return genres;
-        } catch (error) {
-            console.error('Deezer genres error:', error.message);
-            throw new Error('Failed to fetch genres');
-        }
+        return [
+            { id: '21', name: 'Rock', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655061.png' },
+            { id: '14', name: 'Pop', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655081.png' },
+            { id: '18', name: 'Hip-Hop/Rap', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655097.png' },
+            { id: '11', name: 'Jazz', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655187.png' },
+            { id: '17', name: 'Dance', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655160.png' },
+            { id: '20', name: 'Alternative', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655166.png' },
+            { id: '6', name: 'Country', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655193.png' },
+            { id: '12', name: 'Latin', picture: 'https://cdn-icons-png.flaticon.com/512/3655/3655225.png' }
+        ];
     }
 
     /**
-     * Get albums by genre
+     * Search albums (simulated via search)
      */
     async getAlbumsByGenre(genreId, limit = 20) {
-        try {
-            const response = await axios.get(`${DEEZER_API_BASE}/genre/${genreId}/artists`, {
-                params: { limit: 10 }
-            });
-
-            // Get albums from top artists in this genre
-            const artistIds = response.data.data.slice(0, 3).map(a => a.id);
-            const albums = [];
-
-            for (const artistId of artistIds) {
-                const albumResponse = await axios.get(`${DEEZER_API_BASE}/artist/${artistId}/albums`, {
-                    params: { limit: 7 }
-                });
-
-                albums.push(...albumResponse.data.data.map(album => ({
-                    id: album.id.toString(),
-                    title: album.title,
-                    artist: album.artist?.name || 'Unknown',
-                    cover: album.cover_medium,
-                    releaseDate: album.release_date,
-                    nbTracks: album.nb_tracks
-                })));
-            }
-
-            return albums.slice(0, limit);
-        } catch (error) {
-            console.error('Deezer albums by genre error:', error.message);
-            throw new Error('Failed to fetch albums');
-        }
+        // Since we can't easily browse by genre in iTunes Search API without complex scraping,
+        // we'll return empty or generic function. For MVP, we primarily need search.
+        return [];
     }
 
     /**
      * Get tracks from an album
      */
     async getTracksByAlbum(albumId) {
-        const cacheKey = `album_${albumId}`;
-
-        if (cache.albums.has(cacheKey)) {
-            const cached = cache.albums.get(cacheKey);
-            if (Date.now() - cached.timestamp < CACHE_DURATION) {
-                return cached.data;
-            }
-        }
-
         try {
-            const response = await axios.get(`${DEEZER_API_BASE}/album/${albumId}`);
-
-            const tracks = response.data.tracks.data.map(track => ({
-                id: track.id.toString(),
-                title: track.title,
-                artist: track.artist.name,
-                album: response.data.title,
-                duration: track.duration,
-                preview: track.preview,
-                cover: response.data.cover_medium,
-                trackPosition: track.track_position
-            }));
-
-            cache.albums.set(cacheKey, {
-                data: tracks,
-                timestamp: Date.now()
+            const response = await axios.get(`${ITUNES_API_BASE}/lookup`, {
+                params: {
+                    id: albumId,
+                    entity: 'song'
+                }
             });
+
+            // First result is collection, rest are tracks
+            const results = response.data.results;
+            if (results.length < 2) return [];
+
+            const collection = results[0];
+            const tracks = results.slice(1).map(track => ({
+                id: track.trackId.toString(),
+                title: track.trackName,
+                artist: track.artistName,
+                album: collection.collectionName,
+                duration: Math.round(track.trackTimeMillis / 1000),
+                preview: track.previewUrl,
+                cover: collection.artworkUrl100?.replace('100x100', '600x600'),
+                trackPosition: track.trackNumber
+            }));
 
             return tracks;
         } catch (error) {
-            console.error('Deezer album tracks error:', error.message);
-            throw new Error('Failed to fetch album tracks');
-        }
-    }
-
-    /**
-     * Get artist's top tracks
-     */
-    async getArtistTopTracks(artistId, limit = 10) {
-        try {
-            const response = await axios.get(`${DEEZER_API_BASE}/artist/${artistId}/top`, {
-                params: { limit }
-            });
-
-            return response.data.data.map(track => ({
-                id: track.id.toString(),
-                title: track.title,
-                artist: track.artist.name,
-                album: track.album.title,
-                duration: track.duration,
-                preview: track.preview,
-                cover: track.album.cover_medium
-            }));
-        } catch (error) {
-            console.error('Deezer artist top tracks error:', error.message);
-            throw new Error('Failed to fetch artist top tracks');
+            console.error('iTunes album lookup error:', error.message);
+            return [];
         }
     }
 }
