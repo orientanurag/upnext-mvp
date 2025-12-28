@@ -150,18 +150,22 @@ app.post('/api/bids', async (req, res) => {
             });
         }
 
+        // Safely process optional string fields
+        const safeTrim = (value) => (value && typeof value === 'string' ? value.trim() : null);
+        const safeString = (value) => value ? String(value) : null;
+
         // Create bid
         const bid = await prisma.bid.create({
             data: {
                 eventId: event.id,
                 songTitle: songTitle.trim(),
-                songArtist: songArtist?.trim(),
-                songAlbum: songAlbum?.trim(),
-                deezerTrackId,
-                message: message?.trim(),
+                songArtist: safeTrim(songArtist),
+                songAlbum: safeTrim(songAlbum),
+                deezerTrackId: safeString(deezerTrackId),
+                message: safeTrim(message),
                 bidAmount: parseFloat(bidAmount),
-                userName: userName?.trim() || 'Anonymous',
-                userEmail: userEmail?.trim(),
+                userName: safeTrim(userName) || 'Anonymous',
+                userEmail: safeTrim(userEmail),
                 status: 'pending'
             }
         });
