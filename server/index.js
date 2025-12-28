@@ -309,8 +309,14 @@ app.post('/api/bids', async (req, res) => {
         }
 
         // Get Current Slot
-        const currentSlot = await slotService.getCurrentSlot(prisma, event.id);
-        const vibeSlotId = currentSlot ? currentSlot.id : null;
+        const currentSlotObj = await slotService.getCurrentSlot(prisma, event.id);
+        const currentSlotId = currentSlotObj ? currentSlotObj.id : null;
+
+        // Assign to slot (with overflow check)
+        let assignedSlotId = currentSlotId;
+        if (currentSlotId) {
+            assignedSlotId = await slotService.assignBidToSlot(prisma, event.id, currentSlotId);
+        }
 
         // Safely process optional string fields
         const safeTrim = (value) => (value && typeof value === 'string' ? value.trim() : null);
@@ -320,7 +326,7 @@ app.post('/api/bids', async (req, res) => {
         const bid = await prisma.bid.create({
             data: {
                 eventId: event.id,
-                vibeSlotId: vibeSlotId, // Assign to current slot
+                vibeSlotId: assignedSlotId, // Assign to optimized slot
                 walletId: wallet.id,
                 songTitle: songTitle.trim(),
                 songArtist: safeTrim(songArtist),

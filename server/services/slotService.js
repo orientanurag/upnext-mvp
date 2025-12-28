@@ -84,6 +84,64 @@ const slotService = {
     },
 
     /**
+     * Finds the best available slot for a new bid
+     * @param {Object} prisma - Prisma instance
+     * @param {String} eventId - active event ID
+     * @param {String} currentSlotId - current calculated slot ID (preferred)
+     */
+    async assignBidToSlot(prisma, eventId, currentSlotId) {
+        // Find current slot
+        const currentSlot = await prisma.vibeSlot.findUnique({ where: { id: currentSlotId } });
+        if (!currentSlot) return null;
+
+        const MAX_BIDS_PER_SLOT = 5; // Configurable: User mentioned "4 slots example"
+
+        // Check if current slot is full
+        const currentCount = await prisma.bid.count({
+            where: {
+                vibeSlotId: currentSlotId,
+                status: { in: ['pending', 'approved'] }
+            }
+        });
+
+        if (currentCount < MAX_BIDS_PER_SLOT) {
+            return currentSlotId;
+        }
+
+        // Current slot full, look for next available slot
+        console.log(`Slot ${currentSlot.slotNumber} full (${currentCount} bids). Looking for next slot...`);
+
+        const nextSlots = await prisma.vibeSlot.findMany({
+            where: {
+                eventId: eventId,
+                slotNumber: { gt: currentSlot.slotNumber }
+            },
+            orderBy: { slotNumber: 'asc' },
+            take: 5 // Look ahead few slots
+        });
+
+        for (const slot of nextSlots) {
+            const slotCount = await prisma.bid.count({
+                where: {
+                    vibeSlotId: slot.id,
+                    status: { in: ['pending', 'approved'] }
+                }
+            });
+
+            if (slotCount < MAX_BIDS_PER_SLOT) {
+                console.log(`Found available slot: #${slot.slotNumber}`);
+                return slot.id;
+            }
+        }
+
+        // If no slots available (all full), default to current or reject?
+        // For now, return null to indicate full capacity, or fallback to current (overbook)
+        // Let's overbook current to avoid completely blocking if system is saturated
+        console.warn('All near-future slots full. Overbooking current slot.');
+        return currentSlotId;
+    },
+
+    /**
      * Get bids for a specific slot
      * @param {Object} prisma - Prisma Client instance
      * @param {String} slotId - VibeSlot ID
