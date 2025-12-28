@@ -132,14 +132,16 @@ export default function PublicScreen() {
                         )}
                     </div>
 
-                    <div className="bg-gradient-to-br from-gray-900 to-black p-8 rounded-xl shadow-2xl text-center border border-gray-800">
+                    <div className="bg-gradient-to-br from-gray-900 to-black p-8 rounded-xl shadow-2xl text-center border border-gray-800 flex flex-col justify-center">
                         <div className="text-gray-400 text-xl mb-3 uppercase tracking-wide font-medium">
-                            Time Remaining
+                            Current Slot
                         </div>
-                        <CountdownTimer
-                            endTime={currentSlot?.endTime ? new Date(currentSlot.endTime).getTime() : Date.now() + 5 * 60 * 1000}
-                            className="text-6xl font-bold text-brand-lime"
-                        />
+                        <div className="text-4xl font-bold text-white mb-2">
+                            {currentSlot ? `Slot #${currentSlot.slotNumber}` : 'Waiting...'}
+                        </div>
+                        <div className="text-brand-lime animate-pulse text-lg tracking-widest uppercase">
+                            LIVE BIDDING
+                        </div>
                     </div>
                 </div>
             </div>

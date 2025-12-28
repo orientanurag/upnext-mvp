@@ -164,57 +164,66 @@ export default function DJDashboardEnhanced() {
                         </div>
                     </h2>
                     <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-                        {(topBids.length > 0 ? topBids : pendingBids).map((bid, index) => (
-                            <div key={bid.id} className="bg-brand-gray p-4 rounded-lg border-l-4 border-yellow-500 animate-slideUp relative">
-                                <div className="absolute top-0 right-0 bg-yellow-500 text-black font-bold px-2 py-1 text-xs rounded-bl-lg z-10">
-                                    #{index + 1}
-                                </div>
-                                <div className="flex items-start justify-between mb-3">
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <Music size={16} className="text-brand-lime" />
-                                            <span className="font-bold text-lg">{bid.songTitle}</span>
+                        {(topBids.length > 0 ? topBids : pendingBids)
+                            .sort((a, b) => {
+                                // Sort by Bid Amount (High to Low)
+                                if (b.bidAmount !== a.bidAmount) {
+                                    return b.bidAmount - a.bidAmount;
+                                }
+                                // Then by Time (Old to New) - First come first serve for ties
+                                return new Date(a.submittedAt) - new Date(b.submittedAt);
+                            })
+                            .map((bid, index) => (
+                                <div key={bid.id} className="bg-brand-gray p-4 rounded-lg border-l-4 border-yellow-500 animate-slideUp relative">
+                                    <div className="absolute top-0 right-0 bg-yellow-500 text-black font-bold px-2 py-1 text-xs rounded-bl-lg z-10">
+                                        #{index + 1}
+                                    </div>
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Music size={16} className="text-brand-lime" />
+                                                <span className="font-bold text-lg">{bid.songTitle}</span>
+                                            </div>
+                                            <div className="text-gray-400 text-sm">{bid.songArtist}</div>
+                                            <div className="text-brand-lime font-bold mt-1">₹{bid.bidAmount}</div>
                                         </div>
-                                        <div className="text-gray-400 text-sm">{bid.songArtist}</div>
-                                        <div className="text-brand-lime font-bold mt-1">₹{bid.bidAmount}</div>
+                                    </div>
+
+                                    {/* Message */}
+                                    {bid.message && (
+                                        <div className="bg-black p-3 rounded-lg mb-3">
+                                            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
+                                                <MessageSquare size={14} />
+                                                <span>MESSAGE:</span>
+                                            </div>
+                                            <div className="text-sm italic">"{bid.message}"</div>
+                                        </div>
+                                    )}
+
+                                    <div className="text-xs text-gray-500 mb-3">
+                                        {/* Handle invalid date gracefully */}
+                                        {bid.submittedAt ? formatDistanceToNow(new Date(bid.submittedAt), { addSuffix: true }) : 'Just now'} • {bid.userName}
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleAction(bid.id, 'rejected')}
+                                            className="flex-1 px-4 py-2 bg-red-900 text-red-200 rounded-lg hover:bg-red-800 transition-colors flex items-center justify-center gap-1"
+                                        >
+                                            <X size={16} />
+                                            Reject
+                                        </button>
+                                        <button
+                                            onClick={() => handleAction(bid.id, 'approved')}
+                                            className="flex-1 px-4 py-2 bg-green-900 text-green-200 rounded-lg hover:bg-green-800 transition-colors flex items-center justify-center gap-1"
+                                        >
+                                            <Check size={16} />
+                                            Approve
+                                        </button>
                                     </div>
                                 </div>
-
-                                {/* Message */}
-                                {bid.message && (
-                                    <div className="bg-black p-3 rounded-lg mb-3">
-                                        <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
-                                            <MessageSquare size={14} />
-                                            <span>MESSAGE:</span>
-                                        </div>
-                                        <div className="text-sm italic">"{bid.message}"</div>
-                                    </div>
-                                )}
-
-                                <div className="text-xs text-gray-500 mb-3">
-                                    {/* Handle invalid date gracefully */}
-                                    {bid.submittedAt ? formatDistanceToNow(new Date(bid.submittedAt), { addSuffix: true }) : 'Just now'} • {bid.userName}
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => handleAction(bid.id, 'rejected')}
-                                        className="flex-1 px-4 py-2 bg-red-900 text-red-200 rounded-lg hover:bg-red-800 transition-colors flex items-center justify-center gap-1"
-                                    >
-                                        <X size={16} />
-                                        Reject
-                                    </button>
-                                    <button
-                                        onClick={() => handleAction(bid.id, 'approved')}
-                                        className="flex-1 px-4 py-2 bg-green-900 text-green-200 rounded-lg hover:bg-green-800 transition-colors flex items-center justify-center gap-1"
-                                    >
-                                        <Check size={16} />
-                                        Approve
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
                         {topBids.length === 0 && pendingBids.length === 0 && (
                             <div className="text-gray-600 italic text-center py-12 border-2 border-dashed border-gray-800 rounded-lg">
                                 No pending bids found (Slot or Global)
