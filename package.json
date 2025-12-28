@@ -4,7 +4,7 @@
     "description": "UpNext Music Request & Bidding Platform",
     "scripts": {
         "install:all": "npm install && cd client && npm install && cd ../server && npm install",
-        "build": "cd server && npm install && cd ../client && npm install && npm run build",
+        "build": "cd server && npm install && npx prisma generate && cd ../client && npm install && npm run build",
         "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
         "dev:server": "cd server && npm run dev",
         "dev:client": "cd client && npm run dev",
