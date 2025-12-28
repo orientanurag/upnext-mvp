@@ -8,7 +8,8 @@ const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const { generateToken, authenticateToken } = require('./utils/auth');
-const musicService = require('./services/musicService');// Initialize Prisma client with connection handling
+const musicService = require('./services/musicService');
+const slotService = require('./services/slotService');// Initialize Prisma client with connection handling
 const prisma = new PrismaClient({ log: ['error', 'warn'] });
 let dbConnected = false;
 prisma.$connect()
@@ -108,7 +109,86 @@ app.get('/api/music/album/:id/tracks', async (req, res) => {
     }
 });
 
-// Submit a bid
+// --- Wallet Endpoints ---
+
+// Get wallet balance
+app.get('/api/wallet/balance', async (req, res) => {
+    try {
+        const { userId } = req.query;
+        if (!userId) return res.json({ balance: 0 });
+
+        const wallet = await prisma.userWallet.findUnique({
+            where: { userId }
+        });
+
+        res.json({ balance: wallet?.balance || 0 });
+    } catch (error) {
+        console.error('Get balance error:', error);
+        res.status(500).json({ error: 'Failed to fetch balance' });
+    }
+});
+
+// Add money to wallet
+app.post('/api/wallet/add', async (req, res) => {
+    try {
+        const { userId, amount } = req.body;
+        if (!userId || !amount || amount <= 0) {
+            return res.status(400).json({ error: 'Invalid request' });
+        }
+
+        const wallet = await prisma.userWallet.upsert({
+            where: { userId },
+            create: { userId, balance: amount },
+            update: { balance: { increment: amount } }
+        });
+
+        await prisma.walletTransaction.create({
+            data: {
+                walletId: wallet.id,
+                amount: parseFloat(amount),
+                type: 'CREDIT',
+                description: 'Added money to wallet'
+            }
+        });
+
+        res.json({ balance: wallet.balance });
+    } catch (error) {
+        console.error('Add money error:', error);
+        res.status(500).json({ error: 'Failed to add money' });
+    }
+});
+
+// --- Slot Endpoints ---
+
+// Get current slot
+app.get('/api/slots/current', async (req, res) => {
+    try {
+        const event = await prisma.event.findFirst({
+            where: { isActive: true }
+        });
+
+        if (!event) return res.json(null);
+
+        const slot = await slotService.getCurrentSlot(prisma, event.id);
+        res.json(slot);
+    } catch (error) {
+        console.error('Get current slot error:', error);
+        res.status(500).json({ error: 'Failed to fetch current slot' });
+    }
+});
+
+// Get top bids for a slot
+app.get('/api/slots/:id/top-bids', async (req, res) => {
+    try {
+        const bids = await slotService.getTopBids(prisma, req.params.id);
+        res.json(bids);
+    } catch (error) {
+        console.error('Get top bids error:', error);
+        res.status(500).json({ error: 'Failed to fetch top bids' });
+    }
+});
+
+// Submit a bid (with wallet deduction)
 app.post('/api/bids', async (req, res) => {
     console.log('🔔 Received bid request body:', req.body);
     try {
@@ -120,15 +200,48 @@ app.post('/api/bids', async (req, res) => {
             });
         }
 
-        const { songTitle, songArtist, songAlbum, deezerTrackId, message, bidAmount, userName, userEmail } = req.body;
+        const { songTitle, songArtist, songAlbum, deezerTrackId, message, bidAmount, userName, userEmail, userId } = req.body;
 
         // Validation
         if (!songTitle || !bidAmount) {
             return res.status(400).json({ error: 'Song title and bid amount are required' });
         }
 
-        if (bidAmount < MIN_BID_AMOUNT) {
+        const amount = parseFloat(bidAmount);
+        if (amount < MIN_BID_AMOUNT) {
             return res.status(400).json({ error: `Minimum bid amount is ₹${MIN_BID_AMOUNT}` });
+        }
+
+        // Wallet Check & Deduction
+        let wallet = null;
+        if (userId) {
+            wallet = await prisma.userWallet.findUnique({ where: { userId } });
+
+            if (!wallet || wallet.balance < amount) {
+                return res.status(400).json({ error: 'Insufficient wallet balance. Please add money.' });
+            }
+
+            // Deduct from wallet
+            wallet = await prisma.userWallet.update({
+                where: { userId },
+                data: { balance: { decrement: amount } }
+            });
+
+            // Log Transaction
+            await prisma.walletTransaction.create({
+                data: {
+                    walletId: wallet.id,
+                    amount: amount,
+                    type: 'DEBIT',
+                    description: `Bid for ${songTitle}`,
+                    referenceId: 'pending_bid' // Will update with bid ID if needed
+                }
+            });
+        } else {
+            // For now, allow anonymous bids without wallet checks if no userId is provided?
+            // User requirement: "user will upload ... amount shall be deducted".
+            // Assuming wallet is mandatory for this flow.
+            return res.status(400).json({ error: 'User ID required for wallet transaction' });
         }
 
         // Get or create active event
@@ -142,13 +255,19 @@ app.post('/api/bids', async (req, res) => {
                 data: {
                     name: 'Default Event',
                     durationHours: 7,
-                    vibesPerHour: 5,
-                    vibeDurationMinutes: 2,
+                    vibesPerHour: 4, // 15 mins per slot
+                    vibeDurationMinutes: 15,
                     isActive: true,
                     startTime: new Date()
                 }
             });
+            // Generate slots for new event
+            await slotService.generateSlots(prisma, event);
         }
+
+        // Get Current Slot
+        const currentSlot = await slotService.getCurrentSlot(prisma, event.id);
+        const vibeSlotId = currentSlot ? currentSlot.id : null;
 
         // Safely process optional string fields
         const safeTrim = (value) => (value && typeof value === 'string' ? value.trim() : null);
@@ -158,15 +277,18 @@ app.post('/api/bids', async (req, res) => {
         const bid = await prisma.bid.create({
             data: {
                 eventId: event.id,
+                vibeSlotId: vibeSlotId, // Assign to current slot
+                walletId: wallet.id,
                 songTitle: songTitle.trim(),
                 songArtist: safeTrim(songArtist),
                 songAlbum: safeTrim(songAlbum),
                 deezerTrackId: safeString(deezerTrackId),
                 message: safeTrim(message),
-                bidAmount: parseFloat(bidAmount),
+                bidAmount: amount,
                 userName: safeTrim(userName) || 'Anonymous',
                 userEmail: safeTrim(userEmail),
-                status: 'pending'
+                status: 'pending',
+                paymentStatus: 'paid' // Funds already deducted
             }
         });
 
@@ -232,25 +354,62 @@ app.patch('/api/bids/:id', async (req, res) => {
             return res.status(400).json({ error: 'Invalid status' });
         }
 
-        const updateData = { status };
-
-        if (status === 'approved') {
-            updateData.approvedAt = new Date();
-        } else if (status === 'played') {
-            updateData.playedAt = new Date();
-        }
-
-        const bid = await prisma.bid.update({
+        // Fetch existing bid to handle refunds
+        const existingBid = await prisma.bid.findUnique({
             where: { id },
-            data: updateData
+            include: { wallet: true }
         });
 
-        console.log(`✅ Bid ${status}: "${bid.songTitle}"`);
+        if (!existingBid) {
+            return res.status(404).json({ error: 'Bid not found' });
+        }
+
+        let updatedBid;
+
+        // Handle Refund if Rejecting a Paid Bid
+        if (status === 'rejected' && existingBid.paymentStatus === 'paid' && existingBid.walletId) {
+            const [walletUpdate, refundTx, bidUpdate] = await prisma.$transaction([
+                // Refund wallet
+                prisma.userWallet.update({
+                    where: { id: existingBid.walletId },
+                    data: { balance: { increment: existingBid.bidAmount } }
+                }),
+                // Log refund transaction
+                prisma.walletTransaction.create({
+                    data: {
+                        walletId: existingBid.walletId,
+                        amount: existingBid.bidAmount,
+                        type: 'REFUND',
+                        description: `Refund for rejected bid: ${existingBid.songTitle}`,
+                        referenceId: existingBid.id
+                    }
+                }),
+                // Update bid status
+                prisma.bid.update({
+                    where: { id },
+                    data: { status, paymentStatus: 'refunded' }
+                })
+            ]);
+            updatedBid = bidUpdate;
+            console.log(`💸 Refunded ₹${existingBid.bidAmount} for bid "${existingBid.songTitle}"`);
+        } else {
+            // Standard update for other cases
+            const updateData = { status };
+            if (status === 'approved') updateData.approvedAt = new Date();
+            else if (status === 'played') updateData.playedAt = new Date();
+
+            updatedBid = await prisma.bid.update({
+                where: { id },
+                data: updateData
+            });
+        }
+
+        console.log(`✅ Bid ${status}: "${updatedBid.songTitle}"`);
 
         // Broadcast update
-        io.emit('bidUpdated', bid);
+        io.emit('bidUpdated', updatedBid);
 
-        res.json(bid);
+        res.json(updatedBid);
     } catch (error) {
         console.error('Update bid error:', error);
         res.status(500).json({ error: 'Failed to update bid' });

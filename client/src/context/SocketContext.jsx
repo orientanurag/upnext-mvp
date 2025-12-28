@@ -56,6 +56,50 @@ export const SocketProvider = ({ children }) => {
             setGameState(newState);
         });
 
+        // Listen for initial data
+        newSocket.on('initialData', (data) => {
+            console.log('📥 Initial data received:', data);
+            const initialBids = data.bids || [];
+            setGameState(prevState => ({
+                ...prevState,
+                bids: initialBids,
+                leaderboard: initialBids.filter(b => b.status === 'approved')
+            }));
+        });
+
+        // Listen for new bid submissions
+        newSocket.on('bidSubmitted', (newBid) => {
+            console.log('🆕 New bid submitted:', newBid);
+            setGameState(prevState => ({
+                ...prevState,
+                bids: [newBid, ...prevState.bids]
+            }));
+        });
+
+        // Listen for bid status updates (approve/reject/play)
+        newSocket.on('bidUpdated', (updatedBid) => {
+            console.log('✅ Bid updated:', updatedBid);
+            setGameState(prevState => {
+                // Check if bid exists
+                const exists = prevState.bids && prevState.bids.some(b => b.id === updatedBid.id);
+                let updatedBids = prevState.bids || [];
+
+                if (exists) {
+                    updatedBids = updatedBids.map(bid =>
+                        bid.id === updatedBid.id ? updatedBid : bid
+                    );
+                } else {
+                    updatedBids = [updatedBid, ...updatedBids];
+                }
+
+                return {
+                    ...prevState,
+                    bids: updatedBids,
+                    leaderboard: updatedBids.filter(b => b.status === 'approved')
+                };
+            });
+        });
+
         setSocket(newSocket);
 
         return () => {

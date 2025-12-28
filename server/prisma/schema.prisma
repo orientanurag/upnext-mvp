@@ -59,10 +59,41 @@ model Bid {
   approvedAt           DateTime? @map("approved_at")
   playedAt             DateTime? @map("played_at")
   
-  vibeSlot             VibeSlot? @relation(fields: [vibeSlotId], references: [id], onDelete: SetNull)
-  event                Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  walletId             String?  @map("wallet_id") @db.ObjectId
+  paymentStatus        String   @default("pending") // pending, hold, paid, refunded
+  
+  vibeSlot             VibeSlot?   @relation(fields: [vibeSlotId], references: [id], onDelete: SetNull)
+  event                Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  wallet               UserWallet? @relation(fields: [walletId], references: [id])
   
   @@map("bids")
+}
+
+model UserWallet {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String   @unique // Generated UUID stored in client LocalStorage
+  balance        Float    @default(0.0)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  transactions   WalletTransaction[]
+  bids           Bid[]
+
+  @@map("user_wallets")
+}
+
+model WalletTransaction {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  walletId       String   @map("wallet_id") @db.ObjectId
+  amount         Float
+  type           String   // CREDIT, DEBIT, HOLD, REFUND
+  referenceId    String?  @map("reference_id") 
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  wallet         UserWallet @relation(fields: [walletId], references: [id])
+
+  @@map("wallet_transactions")
 }
 
 model AdminUser {

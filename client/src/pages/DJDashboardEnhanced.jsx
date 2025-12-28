@@ -2,25 +2,54 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { formatDistanceToNow } from 'date-fns';
 import { Check, X, Play, MessageSquare, Music } from 'lucide-react';
+import { useSocket } from '../context/SocketContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function DJDashboardEnhanced() {
+    const { gameState } = useSocket();
     const [bids, setBids] = useState([]);
     const [stats, setStats] = useState({});
     const [currentWinner, setCurrentWinner] = useState(null);
+    const [currentSlot, setCurrentSlot] = useState(null);
+    const [topBids, setTopBids] = useState([]);
 
     useEffect(() => {
         fetchBids();
         fetchStats();
+        fetchCurrentSlot();
 
-        const interval = setInterval(() => {
-            fetchBids();
-            fetchStats();
-        }, 3000); // Refresh every 3 seconds
-
+        const interval = setInterval(fetchCurrentSlot, 10000); // Poll slot info
         return () => clearInterval(interval);
     }, []);
+
+    // Update bids when gameState changes (socket updates)
+    useEffect(() => {
+        if (gameState.bids && gameState.bids.length > 0) {
+            setBids(gameState.bids);
+        }
+    }, [gameState.bids]);
+
+    const fetchCurrentSlot = async () => {
+        try {
+            const response = await axios.get(`${API_BASE}/api/slots/current`);
+            setCurrentSlot(response.data);
+            if (response.data) {
+                fetchTopBids(response.data.id);
+            }
+        } catch (error) {
+            console.error('Failed to fetch slot:', error);
+        }
+    };
+
+    const fetchTopBids = async (slotId) => {
+        try {
+            const response = await axios.get(`${API_BASE}/api/slots/${slotId}/top-bids`);
+            setTopBids(response.data);
+        } catch (error) {
+            console.error('Failed to fetch top bids:', error);
+        }
+    };
 
     const fetchBids = async () => {
         try {
@@ -99,18 +128,41 @@ export default function DJDashboardEnhanced() {
                 </div>
             )}
 
+            {/* Current Slot Info */}
+            {currentSlot && (
+                <div className="mb-6 bg-brand-gray border border-yellow-500/50 p-4 rounded-xl flex justify-between items-center animate-fadeIn">
+                    <div>
+                        <div className="text-yellow-500 font-bold uppercase text-xs tracking-wider mb-1">Current Slot</div>
+                        <div className="text-2xl font-bold text-white">
+                            Slot #{currentSlot.slotNumber}
+                        </div>
+                        <div className="text-gray-400 text-sm">
+                            {new Date(currentSlot.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -
+                            {currentSlot.endTime ? new Date(currentSlot.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</div>
+                        <div className="bg-yellow-500/20 text-yellow-500 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                            LIVE BIDDING
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Pending Bids */}
+                {/* Top Bids (Current Slot) */}
                 <div className="bg-black p-6 rounded-xl border border-gray-800">
                     <h2 className="text-xl font-bold text-gray-400 mb-4 flex items-center justify-between">
-                        <span>INCOMING BIDS ({pendingBids.length})</span>
-                        {pendingBids.length > 0 && (
-                            <span className="bg-yellow-600 text-xs px-2 py-1 rounded-full animate-pulse">NEW</span>
-                        )}
+                        <span>TOP BIDS (Current Slot)</span>
+                        <div className="text-xs bg-gray-800 px-2 py-1 rounded">Displaying Top 3</div>
                     </h2>
                     <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-                        {pendingBids.map(bid => (
-                            <div key={bid.id} className="bg-brand-gray p-4 rounded-lg border-l-4 border-yellow-500 animate-slideUp">
+                        {topBids.map((bid, index) => (
+                            <div key={bid.id} className="bg-brand-gray p-4 rounded-lg border-l-4 border-yellow-500 animate-slideUp relative">
+                                <div className="absolute top-0 right-0 bg-yellow-500 text-black font-bold px-2 py-1 text-xs rounded-bl-lg z-10">
+                                    #{index + 1}
+                                </div>
                                 <div className="flex items-start justify-between mb-3">
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-1">
@@ -156,9 +208,9 @@ export default function DJDashboardEnhanced() {
                                 </div>
                             </div>
                         ))}
-                        {pendingBids.length === 0 && (
+                        {topBids.length === 0 && (
                             <div className="text-gray-600 italic text-center py-12 border-2 border-dashed border-gray-800 rounded-lg">
-                                No pending bids
+                                No bids in this slot yet
                             </div>
                         )}
                     </div>

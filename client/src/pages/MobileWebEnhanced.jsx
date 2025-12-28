@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { Search, Music, MessageSquare, DollarSign, Send, Loader } from 'lucide-react';
+import { useSocket } from '../context/SocketContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function MobileWebEnhanced() {
+    const { gameState } = useSocket();
     const [searchQuery, setSearchQuery] = useState('');
     const [searching, setSearching] = useState(false);
     const [searchResults, setSearchResults] = useState([]);
@@ -17,11 +19,67 @@ export default function MobileWebEnhanced() {
     const [recentBids, setRecentBids] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    // Wallet State
+    const [userId, setUserId] = useState('');
+    const [walletBalance, setWalletBalance] = useState(0);
+    const [showWalletModal, setShowWalletModal] = useState(false);
+    const [addingMoney, setAddingMoney] = useState(false);
+
+    // Initialize User
+    useEffect(() => {
+        let storedId = localStorage.getItem('upnext_user_id');
+        if (!storedId) {
+            storedId = crypto.randomUUID();
+            localStorage.setItem('upnext_user_id', storedId);
+        }
+        setUserId(storedId);
+        fetchWalletBalance(storedId);
+    }, []);
+
+    const fetchWalletBalance = async (id) => {
+        try {
+            const response = await axios.get(`${API_BASE}/api/wallet/balance`, {
+                params: { userId: id }
+            });
+            setWalletBalance(response.data.balance);
+        } catch (error) {
+            console.error('Failed to fetch balance:', error);
+        }
+    };
+
+    const handleAddMoney = async (amount) => {
+        setAddingMoney(true);
+        try {
+            const response = await axios.post(`${API_BASE}/api/wallet/add`, {
+                userId,
+                amount
+            });
+            setWalletBalance(response.data.balance);
+            toast.success(`Added ₹${amount} to wallet!`);
+            setShowWalletModal(false);
+        } catch (error) {
+            toast.error('Failed to add money');
+        } finally {
+            setAddingMoney(false);
+        }
+    };
+
+    // Update recent bids when gameState changes (socket updates)
+    useEffect(() => {
+        if (gameState.bids && gameState.bids.length > 0) {
+            setRecentBids(gameState.bids.slice(0, 5));
+            // Check if our balance might have changed (e.g. refund/approval)
+            // Ideally we'd have a specific event for this, but for now we can poll or retry
+            fetchWalletBalance(userId);
+        }
+    }, [gameState.bids, userId]);
+
     // Fetch recent bids on load
     useEffect(() => {
         fetchRecentBids();
     }, []);
 
+    // ... (rest of search/fetch logic) ...
     const fetchRecentBids = async () => {
         try {
             setLoading(true);
@@ -90,7 +148,8 @@ export default function MobileWebEnhanced() {
                 deezerTrackId: selectedSong.id,
                 message: message.trim(),
                 bidAmount: amount,
-                userName: userName.trim() || 'Anonymous'
+                userName: userName.trim() || 'Anonymous',
+                userId // Pass userId for wallet transaction
             });
 
             toast.success('Bid submitted successfully!');
@@ -112,11 +171,55 @@ export default function MobileWebEnhanced() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-brand-black to-black text-white p-4 pb-20">
             <div className="max-w-2xl mx-auto">
-                {/* Header */}
-                <div className="text-center mb-8 pt-6">
-                    <h1 className="text-4xl font-heading font-black text-brand-lime mb-2">UPNEXT</h1>
-                    <p className="text-gray-400">Request your vibe & send a message to the DJ</p>
+                {/* Header with Wallet */}
+                <div className="flex justify-between items-center mb-8 pt-6">
+                    <div>
+                        <h1 className="text-4xl font-heading font-black text-brand-lime mb-1">UPNEXT</h1>
+                        <p className="text-xs text-gray-400">Request your vibe</p>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-xs text-gray-400 mb-1 uppercase tracking-wider">Balance</div>
+                        <div className="text-2xl font-bold text-white mb-2 flex items-center justify-end gap-1">
+                            <span className="text-brand-lime">₹</span>
+                            {walletBalance}
+                        </div>
+                        <div
+                            onClick={() => setShowWalletModal(true)}
+                            className="bg-brand-lime/20 border border-brand-lime text-brand-lime text-xs font-bold px-3 py-1.5 rounded-full hover:bg-brand-lime hover:text-black transition-colors cursor-pointer inline-flex items-center gap-1"
+                        >
+                            <DollarSign size={12} />
+                            ADD MONEY
+                        </div>
+                    </div>
                 </div>
+
+                {/* Wallet Modal */}
+                {showWalletModal && (
+                    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+                        <div className="bg-brand-gray border border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                            <h3 className="text-xl font-bold mb-6 text-center text-white">Add Money to Wallet</h3>
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                {[100, 200, 500, 1000].map(amount => (
+                                    <button
+                                        key={amount}
+                                        onClick={() => handleAddMoney(amount)}
+                                        disabled={addingMoney}
+                                        className="relative group bg-black border border-gray-700 hover:border-brand-lime py-4 rounded-xl font-bold text-lg transition-all"
+                                    >
+                                        <div className="absolute inset-0 bg-brand-lime/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl"></div>
+                                        <span className="text-gray-300 group-hover:text-white relative z-10 transition-colors">₹{amount}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={() => setShowWalletModal(false)}
+                                className="w-full py-3 bg-gray-800 text-gray-300 rounded-xl hover:bg-gray-700 font-bold transition-colors"
+                            >
+                                CANCEL
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Song Search */}
                 <div className="bg-brand-gray p-6 rounded-xl mb-6 border border-gray-800">
@@ -263,10 +366,37 @@ export default function MobileWebEnhanced() {
                         <h3 className="text-xl font-bold mb-4 text-gray-300">Recent Bids</h3>
                         <div className="space-y-2">
                             {recentBids.map((bid) => (
-                                <div key={bid.id} className="bg-brand-gray p-4 rounded-lg border-l-4 border-brand-lime">
-                                    <div className="font-bold">{bid.songTitle}</div>
-                                    <div className="text-sm text-gray-400">{bid.songArtist}</div>
-                                    <div className="text-sm text-brand-lime font-bold mt-1">₹{bid.bidAmount}</div>
+                                <div key={bid.id} className={`bg-brand-gray p-4 rounded-lg border-l-4 ${bid.status === 'approved' ? 'border-green-500' :
+                                    bid.status === 'rejected' ? 'border-red-500' :
+                                        'border-brand-lime'
+                                    }`}>
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex-1">
+                                            <div className="font-bold">{bid.songTitle}</div>
+                                            <div className="text-sm text-gray-400">{bid.songArtist}</div>
+                                            <div className="text-sm text-brand-lime font-bold mt-1">₹{bid.bidAmount}</div>
+                                        </div>
+                                        {bid.status === 'approved' && (
+                                            <span className="px-3 py-1 bg-green-500 text-white text-xs font-bold rounded-full">
+                                                ✓ APPROVED
+                                            </span>
+                                        )}
+                                        {bid.status === 'rejected' && (
+                                            <span className="px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
+                                                ✗ REJECTED
+                                            </span>
+                                        )}
+                                        {bid.status === 'pending' && (
+                                            <span className="px-3 py-1 bg-yellow-500 text-black text-xs font-bold rounded-full">
+                                                ⏳ PENDING
+                                            </span>
+                                        )}
+                                        {bid.status === 'played' && (
+                                            <span className="px-3 py-1 bg-purple-500 text-white text-xs font-bold rounded-full">
+                                                🎵 PLAYED
+                                            </span>
+                                        )}
+                                    </div>
                                     {bid.message && (
                                         <div className="text-sm text-gray-500 mt-2 italic">"{bid.message}"</div>
                                     )}

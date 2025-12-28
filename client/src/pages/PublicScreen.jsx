@@ -1,11 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import CountdownTimer from '../components/CountdownTimer';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export default function PublicScreen() {
     const { gameState } = useSocket();
-    const { leaderboard, currentWinner, currentSlot } = gameState;
+    const { leaderboard, currentWinner } = gameState;
+    const [currentSlot, setCurrentSlot] = useState(null);
+
+    useEffect(() => {
+        fetchCurrentSlot();
+        const interval = setInterval(fetchCurrentSlot, 10000); // Check every 10s
+        return () => clearInterval(interval);
+    }, []);
+
+    const fetchCurrentSlot = async () => {
+        try {
+            const response = await axios.get(`${API_BASE}/api/slots/current`);
+            setCurrentSlot(response.data);
+        } catch (error) {
+            console.error('Failed to fetch slot:', error);
+        }
+    };
 
     // Get the URL for users to scan
     const userBookingUrl = window.location.origin;
@@ -50,14 +69,14 @@ export default function PublicScreen() {
                                 </div>
                                 <div className="flex-grow mx-4">
                                     <div className="text-3xl font-bold truncate mb-1">
-                                        {bid.song}
+                                        {bid.songTitle}
                                     </div>
                                     <div className="text-xl text-gray-400">
-                                        {bid.user || 'Anonymous'}
+                                        {bid.userName || 'Anonymous'}
                                     </div>
                                 </div>
                                 <div className="text-5xl font-bold text-brand-lime drop-shadow-lg">
-                                    ₹{bid.amount}
+                                    ₹{bid.bidAmount}
                                 </div>
                             </div>
                         ))}
@@ -79,13 +98,13 @@ export default function PublicScreen() {
                         {currentWinner ? (
                             <>
                                 <div className="text-5xl font-black leading-tight mb-4 animate-bounce-gentle">
-                                    {currentWinner.song}
+                                    {currentWinner.songTitle}
                                 </div>
                                 <div className="text-2xl font-medium">
-                                    Owned by {currentWinner.user}
+                                    Owned by {currentWinner.userName}
                                 </div>
                                 <div className="text-4xl font-bold mt-4">
-                                    ₹{currentWinner.amount}
+                                    ₹{currentWinner.bidAmount}
                                 </div>
                             </>
                         ) : (
@@ -100,7 +119,7 @@ export default function PublicScreen() {
                             Time Remaining
                         </div>
                         <CountdownTimer
-                            endTime={currentSlot?.endTime || Date.now() + 5 * 60 * 1000}
+                            endTime={currentSlot?.endTime ? new Date(currentSlot.endTime).getTime() : Date.now() + 5 * 60 * 1000}
                             className="text-6xl font-bold text-brand-lime"
                         />
                     </div>
