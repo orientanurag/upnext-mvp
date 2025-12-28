@@ -9,7 +9,31 @@ const bcrypt = require('bcrypt');
 const { generateToken, authenticateToken } = require('./utils/auth');
 const musicService = require('./services/musicService');
 
-const prisma = new PrismaClient();
+// Initialize Prisma with error handling
+let prisma;
+let dbConnected = false;
+
+try {
+    prisma = new PrismaClient({
+        log: ['error', 'warn'],
+    });
+
+    // Test database connection
+    prisma.$connect()
+        .then(() => {
+            console.log('💾 Database connected successfully');
+            dbConnected = true;
+        })
+        .catch((error) => {
+            console.error('❌ Database connection failed:', error.message);
+            console.error('Server will start but database features will be unavailable');
+            dbConnected = false;
+        });
+} catch (error) {
+    console.error('❌ Failed to initialize Prisma:', error.message);
+    console.error('Server will start in limited mode');
+}
+
 const app = express();
 
 app.use(cors());
@@ -94,6 +118,14 @@ app.get('/api/music/album/:id/tracks', async (req, res) => {
 // Submit a bid
 app.post('/api/bids', async (req, res) => {
     try {
+        // Check if database is available
+        if (!prisma || !dbConnected) {
+            return res.status(503).json({
+                error: 'Database not available. Please check server configuration.',
+                hint: 'Make sure DATABASE_URL environment variable is set correctly'
+            });
+        }
+
         const { songTitle, songArtist, songAlbum, deezerTrackId, message, bidAmount, userName, userEmail } = req.body;
 
         // Validation
@@ -151,13 +183,22 @@ app.post('/api/bids', async (req, res) => {
         res.status(201).json(bid);
     } catch (error) {
         console.error('Bid submission error:', error);
-        res.status(500).json({ error: 'Failed to submit bid' });
+        res.status(500).json({
+            error: 'Failed to submit bid',
+            details: error.message
+        });
     }
 });
 
 // Get all bids
 app.get('/api/bids', async (req, res) => {
     try {
+        // Check if database is available
+        if (!prisma || !dbConnected) {
+            // Return empty array if DB not available, don't crash
+            return res.json([]);
+        }
+
         const { status, limit = 50 } = req.query;
 
         const where = {};
@@ -177,7 +218,8 @@ app.get('/api/bids', async (req, res) => {
         res.json(bids);
     } catch (error) {
         console.error('Get bids error:', error);
-        res.status(500).json({ error: 'Failed to fetch bids' });
+        // Return empty array on error instead of crashing
+        res.json([]);
     }
 });
 
