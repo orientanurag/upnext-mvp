@@ -153,13 +153,18 @@ export default function DJDashboardEnhanced() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Top Bids (Current Slot) */}
+                {/* Top Bids (Current Slot / Universal Fallback) */}
                 <div className="bg-black p-6 rounded-xl border border-gray-800">
                     <h2 className="text-xl font-bold text-gray-400 mb-4 flex items-center justify-between">
-                        <span>TOP BIDS (Current Slot)</span>
-                        <div className="text-xs bg-gray-800 px-2 py-1 rounded">Queue View</div>
+                        <span>
+                            {topBids.length > 0 ? 'TOP BIDS (Current Slot)' : 'ALL PENDING BIDS (Global)'}
+                        </span>
+                        <div className="text-xs bg-gray-800 px-2 py-1 rounded">
+                            {topBids.length > 0 ? 'Slot View' : 'Universal View'}
+                        </div>
                     </h2>
                     <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-                        {topBids.map((bid, index) => (
+                        {(topBids.length > 0 ? topBids : pendingBids).map((bid, index) => (
                             <div key={bid.id} className="bg-brand-gray p-4 rounded-lg border-l-4 border-yellow-500 animate-slideUp relative">
                                 <div className="absolute top-0 right-0 bg-yellow-500 text-black font-bold px-2 py-1 text-xs rounded-bl-lg z-10">
                                     #{index + 1}
@@ -187,7 +192,8 @@ export default function DJDashboardEnhanced() {
                                 )}
 
                                 <div className="text-xs text-gray-500 mb-3">
-                                    {formatDistanceToNow(new Date(bid.submittedAt), { addSuffix: true })} • {bid.userName}
+                                    {/* Handle invalid date gracefully */}
+                                    {bid.submittedAt ? formatDistanceToNow(new Date(bid.submittedAt), { addSuffix: true }) : 'Just now'} • {bid.userName}
                                 </div>
 
                                 {/* Actions */}
@@ -209,9 +215,9 @@ export default function DJDashboardEnhanced() {
                                 </div>
                             </div>
                         ))}
-                        {topBids.length === 0 && (
+                        {topBids.length === 0 && pendingBids.length === 0 && (
                             <div className="text-gray-600 italic text-center py-12 border-2 border-dashed border-gray-800 rounded-lg">
-                                No bids in this slot yet
+                                No pending bids found (Slot or Global)
                             </div>
                         )}
                     </div>
